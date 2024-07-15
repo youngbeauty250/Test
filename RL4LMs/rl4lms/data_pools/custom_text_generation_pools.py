@@ -560,9 +560,7 @@ class DailyDialog(TextGenPool):
         utterance_id = 0
         for item in dataset:
             contexts = []
-            for utterance, emotion, intent in zip(item["dialog"],
-                                                  item["emotion"],
-                                                  item["act"]):
+            for utterance, emotion, intent in zip(item["dialog"], item["emotion"], item["act"]):
                 if len(contexts) >= context_size:
                     context = DailyDialog.EOU_TOKEN.join(contexts[-context_size:]) 
                     context += " " + DailyDialog.EOU_TOKEN
@@ -581,9 +579,25 @@ class DailyDialog(TextGenPool):
         dp_instance = cls(samples)
         return dp_instance
 
-class MSMARCO(TextGenPool):
+class QueriesData(TextGenPool):
     @classmethod
-    def prepare(cls, split)
+    def prepare(cls, split: str, prompt_prefix: str = "", queries_file: str = "queries.jsonl"):
+        
+        queries = QueriesData.load_queries(queries_file=queries_file)
+        samples = []
+        for idx, query in enumerate(queries):
+            sample = Sample(id=f"{split}_{idx}",
+                           prompt_or_input_text=prompt_prefix + query,
+                           references=query
+                           )
+            samples.append(sample)
+        print(f"sample {str(len(queries))} {split} queries.") 
+        queries_instance = cls(samples)
+        return queries_instance
+    
+    @staticmethod
+    def load_queries(queries_file: str = "queries.jsonl"):
+        pass
     
 if __name__ == "__main__":
     from transformers import AutoTokenizer

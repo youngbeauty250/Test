@@ -659,6 +659,88 @@ class IntentAccuracy(BatchedRewardFunction):
         return rewards.tolist()
 
 
+class LMRewardFunction(RewardFunction):
+    def __init__(
+        self, pid: int = 0, shaping_fn: str = None, use_single_ref: bool = True, weight_f1: float = None, norm: bool = False, think:bool = False, max_obs = None,searchfunc = 'plain', topn=None, max_words_perdoc=None
+    ) -> None:
+        super().__init__()
+        # self._f1 = load_metric("f1")
+        # self._em = load_metric("exact_match")
+        self._weight_f1 = weight_f1 if weight_f1 else 1.0
+        self._pid = pid
+        self._norm = norm
+        self._think = think
+        self._max_obs = max_obs
+        from rl4lms.envs.text_generation.registry import RewardFunctionRegistry
+
+        self._shaping_fn = (
+            RewardFunctionRegistry.get(shaping_fn, {})
+            if shaping_fn is not None
+            else shaping_fn
+        )
+        self._use_single_ref = use_single_ref
+        self.searchfunc = searchfunc
+        self.topn = topn
+        self.max_words_perdoc = max_words_perdoc
+
+    def __call__(
+        self,
+        current_observation: Observation,
+        action: int,
+        next_observation: Observation,
+        done: bool,
+        meta_info: Dict[str, Any] = None,
+    ) -> float:
+        if done:
+            # add an broadcast
+            
+            # TBD: considers only one reference for now
+            if self._use_single_ref:
+                references = [next_observation.target_or_reference_texts[0]]
+            else:
+                references = [next_observation.target_or_reference_texts]
+            predicted_query = [next_observation.context_text]
+            # search + prompt
+            questions_ = next_observation.prompt_or_input_text # one eg
+            # print(questions_)
+            prefix = "rewrite a better search query: "
+            questions = [questions_.split(prefix)[1]]
+            # print(questions)
+            # print(predicted_query)
+            predicted, inlines = llm(
+                queries = predicted_query,
+                questions = questions,
+                pid = self._pid,
+                bar = False,
+                think = self._think,
+                max_obs = self._max_obs,
+                searchfunc = self.searchfunc, topn=self.topn, max_words_perdoc=self.max_words_perdoc
+            )
+            # predicted = list(predicted)
+            # print("returned predcitions: ", predicted)
+            # print("references: ", references)
+            metric_results_f1 = []
+            metric_results_em = []
+            metric_hit = []
+            for i, (p, r) in enumerate(zip(predicted, references)):
+                metric_results_em.append(ems(p[0], r))
+                metric_results_f1.append(f1(p[0], r))
+            for i, (inl, r) in enumerate(zip(inlines, references)):
+                metric_hit.append(hits(r, inl['output'], dn=0, dl=False))
+            reward_qa = sum(metric_results_em)/len(metric_results_em) + sum(metric_results_f1)/len(metric_results_f1) * self._weight_f1
+            reward_retr = sum(metric_hit)/len(metric_hit)
+            if self._norm:
+                reward_qa = reward_qa / (1 + self._weight_f1)
+            reward = reward_qa + reward_retr
+            print(reward, reward_qa, reward_retr)
+            if self._shaping_fn is not None:
+                aux_score = self._shaping_fn(
+                    current_observation, action, next_observation, done, meta_info
+                )
+                reward = reward + aux_score
+            return reward
+        return 0
+    
 if __name__ == "__main__":
     predictions = "hello there general kenobi"
     references = ["hello there general kenobi", "hello there!!"]
