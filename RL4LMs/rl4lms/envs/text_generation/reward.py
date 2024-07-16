@@ -702,10 +702,13 @@ class LMRewardFunction(RewardFunction):
             predicted_query = [next_observation.context_text]
             # search + prompt
             questions_ = next_observation.prompt_or_input_text # one eg
-            # print(questions_)
+            print(references, questions_)
             prefix = "rewrite a better search query: "
             questions = [questions_.split(prefix)[1]]
-            # print(questions)
+            print(questions)
+            
+            return 0
+        """
             # print(predicted_query)
             predicted, inlines = llm(
                 queries = predicted_query,
@@ -739,6 +742,7 @@ class LMRewardFunction(RewardFunction):
                 )
                 reward = reward + aux_score
             return reward
+        """
         return 0
     
 if __name__ == "__main__":
